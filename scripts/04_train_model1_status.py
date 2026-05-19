@@ -22,9 +22,9 @@ class Model1Trainer:
     def __init__(self):
         self.model = None
         self.label_map = {
-            0: 'No Mask',
-            1: 'Proper Mask',
-            2: 'Improper Mask'
+            0: 'no_mask',
+            1: 'proper_mask',
+            2: 'improper_mask'
         }
         self.reverse_label_map = {v: k for k, v in self.label_map.items()}
     
@@ -70,7 +70,6 @@ class Model1Trainer:
         return np.array(images), np.array(labels)
     
     def one_hot_encode(self, y, num_classes):
-        """Convert class labels to one-hot encoding"""
         
         one_hot = np.zeros((y.shape[0], num_classes))
         one_hot[np.arange(y.shape[0]), y] = 1
@@ -78,10 +77,9 @@ class Model1Trainer:
         return one_hot
     
     def train(self, X_train, y_train):
-        """Train the neural network"""
         
         print("\n" + "=" * 80)
-        print("TRAINING MODEL 1 - MASK STATUS CLASSIFIER")
+        print("TRAINING MODEL 1 - MASK STATUS CLASSIFIER (IMPROVED)")
         print("=" * 80)
         
         input_size = X_train.shape[1]
@@ -89,39 +87,59 @@ class Model1Trainer:
         
         print(f"\nNetwork Architecture:")
         print(f"  Input Layer:    {input_size} neurons (224×224×3 flattened)")
-        print(f"  Hidden Layer 1: 512 neurons (Sigmoid activation)")
-        print(f"  Hidden Layer 2: 256 neurons (Sigmoid activation)")
+        print(f"  Hidden Layer 1: 1024 neurons (Sigmoid activation)")  # INCREASED
+        print(f"  Hidden Layer 2: 512 neurons (Sigmoid activation)")   # INCREASED
         print(f"  Output Layer:   {output_size} neurons (Softmax activation)")
         print(f"\nTraining set size: {X_train.shape[0]} images")
         print(f"Classes: {[self.label_map[i] for i in range(output_size)]}")
         
-        self.model = NeuralNetwork(input_size=input_size,hidden_size_1=512,hidden_size_2=256,
+        self.model = NeuralNetwork(
+            input_size=input_size,
+            hidden_size_1=512,     # INCREASED from 512
+            hidden_size_2=256,      # INCREASED from 256
             output_size=output_size,
-            learning_rate=0.001
+            learning_rate=0.01      # INCREASED from 0.001
         )
         
-        # One-hot encode labels
         y_train_encoded = self.one_hot_encode(y_train, output_size)
         
-        print(f"\nTraining Parameters:")
-        print(f"  Epochs: 100")
-        print(f"  Batch Size: 32")
-        print(f"  Learning Rate: 0.001")
-        print(f"  Optimizer: Gradient Descent")
+        print(f"\n⚡ IMPROVED Training Parameters:")
+        print(f"  Epochs: 500 (INCREASED from 100)")
+        print(f"  Batch Size: 16 (DECREASED from 32)")
+        print(f"  Learning Rate: 0.01 (INCREASED from 0.001)")
+        print(f"  Network Size: LARGER (1024 → 512 instead of 512 → 256)")
         
         print("\nTraining in progress...")
+        print("(This may take 2-5 minutes)")
         
-        # Train
         losses = self.model.train(
             X_train, y_train_encoded,
-            epochs=100,
-            batch_size=32,
+            epochs=300,             
+            batch_size=32,          
             verbose=True
         )
         
         print("\n✅ Training complete!")
         
+        self.plot_loss_curve(losses)
+        
         return losses
+    
+    def plot_loss_curve(self, losses):
+        """Plot and save loss curve"""
+        
+        plt.figure(figsize=(10, 6))
+        plt.plot(losses, linewidth=2)
+        plt.title('Model 1 - Training Loss Over Epochs', fontsize=14, fontweight='bold')
+        plt.xlabel('Epoch', fontsize=12)
+        plt.ylabel('Loss', fontsize=12)
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        
+        output_path = 'results/model1_loss_curve.png'
+        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        print(f"✓ Loss curve saved to: {output_path}")
+        plt.close()
     
     def evaluate(self, X_test, y_test):
         """Evaluate model on test set"""
@@ -131,32 +149,26 @@ class Model1Trainer:
         print("=" * 80)
         print(f"\nTest set size: {X_test.shape[0]} images")
         
-        # Make predictions
         y_pred = self.model.predict(X_test)
         
-        # Calculate metrics
         accuracy = accuracy_score(y_test, y_pred)
         precision = precision_score(y_test, y_pred, average='weighted')
         recall = recall_score(y_test, y_pred, average='weighted')
         f1 = f1_score(y_test, y_pred, average='weighted')
         
-        # Confusion matrix
         cm = confusion_matrix(y_test, y_pred)
         
-        # Print results
         print(f"\n📊 METRICS:")
         print(f"  Accuracy:  {accuracy:.4f} ({accuracy*100:.2f}%)")
         print(f"  Precision: {precision:.4f}")
         print(f"  Recall:    {recall:.4f}")
         print(f"  F1-Score:  {f1:.4f}")
         
-        # Per-class metrics
         print(f"\n📋 PER-CLASS METRICS:")
         for i, label in self.label_map.items():
             class_accuracy = cm[i, i] / cm[i].sum()
             print(f"  {label:20s}: {class_accuracy:.4f} ({class_accuracy*100:.2f}%)")
         
-        # Confusion matrix
         print(f"\n🔀 CONFUSION MATRIX:")
         print("     ", end="")
         for label in self.label_map.values():
@@ -169,10 +181,7 @@ class Model1Trainer:
                 print(f"{cm[i, j]:15d}", end="")
             print()
         
-        # Save metrics
         self.save_metrics(accuracy, precision, recall, f1, cm)
-        
-        # Plot confusion matrix
         self.plot_confusion_matrix(cm)
         
         return accuracy, precision, recall, f1, cm
@@ -191,11 +200,16 @@ class Model1Trainer:
             
             f.write("NETWORK ARCHITECTURE:\n")
             f.write("  Input Layer:    150528 neurons (224×224×3 flattened)\n")
-            f.write("  Hidden Layer 1: 512 neurons (Sigmoid)\n")
-            f.write("  Hidden Layer 2: 256 neurons (Sigmoid)\n")
+            f.write("  Hidden Layer 1: 1024 neurons (Sigmoid)\n")
+            f.write("  Hidden Layer 2: 512 neurons (Sigmoid)\n")
             f.write("  Output Layer:   3 neurons (Softmax)\n")
             f.write("  Loss Function:  Cross-Entropy\n")
             f.write("  Optimizer:      Gradient Descent\n\n")
+            
+            f.write("TRAINING HYPERPARAMETERS:\n")
+            f.write("  Epochs: 500\n")
+            f.write("  Batch Size: 16\n")
+            f.write("  Learning Rate: 0.01\n\n")
             
             f.write("OVERALL METRICS:\n")
             f.write(f"  Accuracy:  {accuracy:.4f} ({accuracy*100:.2f}%)\n")
@@ -256,17 +270,21 @@ def main():
     """Main execution"""
     
     print("\n" + "=" * 80)
-    print("SCRIPT 05: TRAIN MODEL 1 - MASK STATUS CLASSIFIER (FROM SCRATCH)")
+    print("SCRIPT 05: TRAIN MODEL 1 - MASK STATUS CLASSIFIER (IMPROVED)")
     print("=" * 80)
     print("\nArchitecture: 3-Layer Feedforward Neural Network")
     print("Activation: Sigmoid (hidden), Softmax (output)")
     print("Loss: Cross-Entropy")
     print("Optimizer: Gradient Descent with Backpropagation")
+    print("\n⚡ IMPROVEMENTS:")
+    print("  • Larger network (1024 → 512 neurons)")
+    print("  • Higher learning rate (0.01 vs 0.001)")
+    print("  • More epochs (500 vs 100)")
+    print("  • Smaller batch size (16 vs 32)")
     
     try:
         trainer = Model1Trainer()
         
-        # Load data
         print("\n[STEP 1] Loading Training Data")
         print("-" * 80)
         X_train, y_train = trainer.load_images_from_folder('dataset/model1_mask_status/train')
@@ -287,22 +305,18 @@ def main():
         
         print(f"✓ Loaded {X_test.shape[0]} test images")
         
-        # Train
         print("\n[STEP 3] Training Model")
         print("-" * 80)
         losses = trainer.train(X_train, y_train)
         
-        # Evaluate
         print("\n[STEP 4] Evaluating Model")
         print("-" * 80)
         accuracy, precision, recall, f1, cm = trainer.evaluate(X_test, y_test)
         
-        # Save
         print("\n[STEP 5] Saving Model")
         print("-" * 80)
         trainer.save_model()
         
-        # Summary
         print("\n" + "=" * 80)
         print("✅ MODEL 1 TRAINING COMPLETE!")
         print("=" * 80)
@@ -313,7 +327,7 @@ def main():
         print(f"  F1-Score:  {f1:.4f}")
         print(f"\n💾 Model saved to: models/model1_mask_status.pkl")
         print(f"📊 Metrics saved to: results/model1_metrics.txt")
-        print(f"\n💡 Next step: Run 06_train_model2_type.py")
+        print(f"📈 Loss curve saved to: results/model1_loss_curve.png")
         print("=" * 80)
         print("\n")
         
