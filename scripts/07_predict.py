@@ -3,126 +3,136 @@ import sys
 import pickle
 import numpy as np
 import cv2
-import importlib.util
+import tkinter as tk
+from tkinter import filedialog
+from pathlib import Path
 
-spec = importlib.util.spec_from_file_location(
-    "neural_network", 
-    os.path.join(os.path.dirname(__file__), "utils", "neural_network.py")
-)
-neural_network_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(neural_network_module)
-NeuralNetwork = neural_network_module.NeuralNetwork
-
-from config import MODEL1_PATH, MODEL2_PATH, MODEL3_PATH, MODEL1_LABELS, MODEL2_LABELS, MODEL3_LABELS
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from scripts.utils.neural_network import NeuralNetwork
+from scripts.config import CONFIG
 
 class PredictionEngine:
     
     def __init__(self):
-        self.model1 = None
-        self.model2 = None
-        self.model3 = None
+        self.models = {}
+        self.label_maps = {
+            1: {0: 'no_mask', 1: 'proper_mask', 2: 'improper_mask'},
+            2: {0: 'black', 1: 'blue', 2: 'green', 3: 'red', 4: 'white', 5: 'yellow'},
+            3: {0: 'cloth', 1: 'medical', 2: 'n95'}
+        }
         self.load_models()
     
     def load_models(self):
-        print("="*80)
-        print("LOADING MODELS")
-        print("="*80)
+        print("Loading models...")
         
-        if os.path.exists(MODEL1_PATH):
-            with open(MODEL1_PATH, 'rb') as f:
-                weights1 = pickle.load(f)
-            self.model1 = NeuralNetwork(150528, 512, 256, 3)
-            self.model1.W1 = weights1['W1']
-            self.model1.b1 = weights1['b1']
-            self.model1.W2 = weights1['W2']
-            self.model1.b2 = weights1['b2']
-            self.model1.W3 = weights1['W3']
-            self.model1.b3 = weights1['b3']
-            print("✓ Model 1 (Status) loaded")
-        
-        if os.path.exists(MODEL2_PATH):
-            with open(MODEL2_PATH, 'rb') as f:
-                weights2 = pickle.load(f)
-            self.model2 = NeuralNetwork(150528, 512, 256, 6)
-            self.model2.W1 = weights2['W1']
-            self.model2.b1 = weights2['b1']
-            self.model2.W2 = weights2['W2']
-            self.model2.b2 = weights2['b2']
-            self.model2.W3 = weights2['W3']
-            self.model2.b3 = weights2['b3']
-            print("✓ Model 2 (Colour) loaded")
-        
-        if os.path.exists(MODEL3_PATH):
-            with open(MODEL3_PATH, 'rb') as f:
-                weights3 = pickle.load(f)
-            self.model3 = NeuralNetwork(150528, 512, 256, 3)
-            self.model3.W1 = weights3['W1']
-            self.model3.b1 = weights3['b1']
-            self.model3.W2 = weights3['W2']
-            self.model3.b2 = weights3['b2']
-            self.model3.W3 = weights3['W3']
-            self.model3.b3 = weights3['b3']
-            print("✓ Model 3 (Type) loaded")
+        for model_num in [1, 2, 3]:
+            model_path = CONFIG['MODELS_PATH'][f'model{model_num}']
+            
+            if not os.path.exists(model_path):
+                print(f"✗ Model {model_num} not found: {model_path}")
+                continue
+            
+            with open(model_path, 'rb') as f:
+                weights = pickle.load(f)
+            
+            if model_num == 1:
+                model = NeuralNetwork(150528, 512, 256, 3, learning_rate=0.01)
+            elif model_num == 2:
+                model = NeuralNetwork(150528, 512, 256, 6, learning_rate=0.01)
+            else:
+                model = NeuralNetwork(150528, 512, 256, 3, learning_rate=0.01)
+            
+            model.W1 = weights['W1']
+            model.b1 = weights['b1']
+            model.W2 = weights['W2']
+            model.b2 = weights['b2']
+            model.W3 = weights['W3']
+            model.b3 = weights['b3']
+            
+            self.models[model_num] = model
+            print(f"✓ Model {model_num} loaded")
         
         print()
     
     def preprocess_image(self, image_path):
         img = cv2.imread(image_path)
+        
         if img is None:
-            raise ValueError(f"Could not read image: {image_path}")
-        img_flat = img.flatten().astype('float32') / 255.0
-        return img_flat.reshape(1, -1)
+            return None
+        
+        img_resized = cv2.resize(img, (224, 224))
+        img_flat = img_resized.flatten().astype('float32') / 255.0
+        
+        return img_flat.reshape(1, -1), img_resized
     
     def predict(self, image_path):
+        if not os.path.exists(image_path):
+            print(f"✗ Image not found: {image_path}")
+            return
+        
         print("="*80)
-        print("MAKING PREDICTIONS")
+        print(f"IMAGE: {image_path}")
         print("="*80)
-        print(f"\nImage: {image_path}\n")
         
-        img_data = self.preprocess_image(image_path)
+        result = self.preprocess_image(image_path)
+        if result is None:
+            print("✗ Failed to load image")
+            return
         
-        results = {}
+        X, img_display = result
         
-        if self.model1:
-            pred1 = self.model1.predict(img_data)[0]
-            results['status'] = MODEL1_LABELS[pred1]
-            print(f"Status:  {results['status']}")
+        print("\n📊 PREDICTIONS:\n")
         
-        if self.model2:
-            pred2 = self.model2.predict(img_data)[0]
-            results['colour'] = MODEL2_LABELS[pred2]
-            print(f"Colour:  {results['colour']}")
+        if 1 in self.models:
+            output = self.models[1].forward(X)
+            pred_idx = np.argmax(output[0])
+            confidence = output[0][pred_idx] * 100
+            pred_label = self.label_maps[1][pred_idx]
+            print(f"  Status:  {pred_label.upper():20s} ({confidence:.2f}%)")
         
-        if self.model3:
-            pred3 = self.model3.predict(img_data)[0]
-            results['type'] = MODEL3_LABELS[pred3]
-            print(f"Type:    {results['type']}")
+        if 2 in self.models:
+            output = self.models[2].forward(X)
+            pred_idx = np.argmax(output[0])
+            confidence = output[0][pred_idx] * 100
+            pred_label = self.label_maps[2][pred_idx]
+            print(f"  Colour:  {pred_label.upper():20s} ({confidence:.2f}%)")
         
-        print()
-        return results
+        if 3 in self.models:
+            output = self.models[3].forward(X)
+            pred_idx = np.argmax(output[0])
+            confidence = output[0][pred_idx] * 100
+            pred_label = self.label_maps[3][pred_idx]
+            print(f"  Type:    {pred_label.upper():20s} ({confidence:.2f}%)")
+        
+        print("\n" + "="*80 + "\n")
+
+def select_image():
+    root = tk.Tk()
+    root.withdraw()
+    
+    file_path = filedialog.askopenfilename(
+        title="Select an image",
+        filetypes=[
+            ("Image files", "*.jpg *.jpeg *.png *.bmp *.gif"),
+            ("All files", "*.*")
+        ]
+    )
+    
+    return file_path
 
 def main():
     print("\n" + "="*80)
-    print("SCRIPT 07: MAKE PREDICTIONS ON NEW IMAGES")
+    print("SCRIPT 07: PREDICT - IMAGE CLASSIFICATION")
     print("="*80 + "\n")
     
-    if len(sys.argv) < 2:
-        print("Usage: python 07_predict.py <image_path>")
-        print("\nExample: python 07_predict.py test_image.jpg")
-        sys.exit(1)
+    image_path = select_image()
     
-    image_path = sys.argv[1]
-    
-    if not os.path.exists(image_path):
-        print(f"Error: Image file not found: {image_path}")
-        sys.exit(1)
+    if not image_path:
+        print("No image selected.")
+        return
     
     engine = PredictionEngine()
-    results = engine.predict(image_path)
-    
-    print("="*80)
-    print("✅ PREDICTION COMPLETE")
-    print("="*80 + "\n")
+    engine.predict(image_path)
 
 if __name__ == "__main__":
     main()
