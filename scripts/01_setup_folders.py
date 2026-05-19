@@ -1,14 +1,7 @@
-"""
-Script 01: Setup Project Folder Structure
-Purpose: Create all necessary folders for the pipeline
-Run this FIRST
-"""
-
 import os
 import sys
 
 def create_project_structure():
-    """Create complete folder structure for the project"""
     
     folders = [
         'raw_data/status/no_mask',
